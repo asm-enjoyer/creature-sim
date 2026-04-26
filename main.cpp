@@ -15,12 +15,10 @@ raylib::Sound pop_sound;
 enum WALK {UP, DOWN, LEFT, RIGHT};
 
 const int SCREEN_WIDTH = 2500;
-const int SCREEN_HEIGHT = 900;
+const int SCREEN_HEIGHT = 1100;
 
 float FPS = 60;
 float gameTick = 10; // 10 ms = 1 tick
-
-std::default_random_engine engine;
 
 void setGameTick(float t)
 {
@@ -56,8 +54,8 @@ struct Stats
     bool is_alive;
     raylib::Color col;
 
-    Stats() {}
-    Stats(float hp, float atk, Circle sight_area, Circle range_area, raylib::Rectangle pos = {0, 0, 10, 10}, bool is_alive = true, 
+    Stats(float hp = 1, float atk = 1, Circle sight_area = Circle(50, raylib::Vector2{0, 0}),
+     Circle range_area = Circle(50, raylib::Vector2{0, 0}), raylib::Rectangle pos = {0, 0, 10, 10}, bool is_alive = true, 
         Creature *go_after = nullptr, 
         Creature *attack = nullptr, 
         raylib::Color col = raylib::Color::Red())
@@ -95,7 +93,7 @@ class Creature
 
     virtual ~Creature(){creature_size--;}
 
-    friend void addCreature(std::vector<Creature *> &creatures, int count);
+    friend void addCreature(std::vector<Creature *> &creatures, int count, Stats *stats_local);
     friend void deleteCreature(std::vector<Creature *> &creatures, int count);
     friend void FightBetween(Creature *c1, Creature *c2);
 
@@ -185,28 +183,32 @@ int Creature::creature_size = 0;
 float Creature::walkLength = 800;
 
 /* Friend functions*/
-void addCreature(std::vector<Creature *> &creatures, int count = 1)
+void addCreature(std::vector<Creature *> &creatures, int count = 1, Stats *stats_local = nullptr)
 {
     for(int i = 0; i < count; i++)
     {
-        raylib::Vector2 rand_pos{static_cast<float>(GetRandomValue(2, SCREEN_WIDTH - 2)), static_cast<float>(GetRandomValue(2, SCREEN_HEIGHT - 2))};
-        creatures.push_back(new Human( 
-        Stats{
-            static_cast<float>(GetRandomValue(1, 20)),
-            static_cast<float>(GetRandomValue(1, 10)),
-            Circle(150, rand_pos),
-            Circle(30, rand_pos),
-            raylib::Rectangle(rand_pos.x, rand_pos.y, 5, 5),
-            true,
-            nullptr,
-            nullptr,
-            raylib::Color
-            (static_cast<unsigned char>(GetRandomValue(100, 255)), 
-            static_cast<unsigned char>(GetRandomValue(100, 255)),
-            static_cast<unsigned char>(GetRandomValue(100, 255)),
-            255)
-            }
-        ));
+        if(stats_local)
+        {
+            creatures.push_back(new Human(*stats_local));
+        }
+
+        else
+        {
+            raylib::Vector2 rand_pos{
+                static_cast<float>(GetRandomValue(2, SCREEN_WIDTH - 2)),
+                static_cast<float>(GetRandomValue(2, SCREEN_HEIGHT - 2))};
+            creatures.push_back(new Human(
+                Stats{static_cast<float>(GetRandomValue(1, 20)),
+                      static_cast<float>(GetRandomValue(1, 10)),
+                      Circle(150, rand_pos), Circle(30, rand_pos),
+                      raylib::Rectangle(rand_pos.x, rand_pos.y, 5, 5), true,
+                      nullptr, nullptr,
+                      raylib::Color(
+                          static_cast<unsigned char>(GetRandomValue(100, 255)),
+                          static_cast<unsigned char>(GetRandomValue(100, 255)),
+                          static_cast<unsigned char>(GetRandomValue(100, 255)),
+                          255)}));
+        }
     }
 }
 void deleteCreature(std::vector<Creature *> &creatures, int count = 1)
@@ -239,12 +241,55 @@ void FightBetween(Creature *c1, Creature *c2)
         c2->stats.hp = 0;
     }
 }
+/***************** */
 
-int main() 
+void ParseAndAddSpecialCreature(char inputText[3][128], std::vector<Creature *> &creatures)
+{
+    Stats new_stats;
+    int ctr = 0;
+    char str[128];
+    strcpy(str, inputText[2]);
+    char split[20] = "";
+    int j = 0;
+    for (int i = 0; str[i] != '\0'; i++)
+    {
+        if (isspace(str[i])) continue;
+
+        if (str[i] != ',')
+            split[j++] = str[i];
+
+        else
+        {
+            split[j] = '\0';
+            switch (ctr)
+            {
+            case 0:
+                new_stats.hp = static_cast<float>(atoi(split));
+                break;
+            case 1:
+                new_stats.atk = static_cast<float>(atoi(split));
+                break;
+            case 2:
+                new_stats.sight_area.radius = static_cast<float>(atoi(split));
+                break;
+            case 3:
+                new_stats.range_area.radius = static_cast<float>(atoi(split));
+                break;
+            }
+            ctr++;
+            j = 0;
+        }
+    }
+    new_stats.pos =
+        raylib::Rectangle(GetRandomValue(2, SCREEN_WIDTH - 2),
+                          GetRandomValue(2, SCREEN_HEIGHT - 2), 5, 5);
+    addCreature(creatures, 1, &new_stats);
+}
+
+int main()
 {
     raylib::Window window(SCREEN_WIDTH, SCREEN_HEIGHT, "Creature simulator");
     window.SetTargetFPS(FPS);
-    engine.seed(time(0));
 
     raylib::AudioDevice audio;
     
@@ -264,40 +309,57 @@ int main()
     bool showUI = true;
     float old_FPS;
 
-    char inputText1[64] = "", inputText2[64] = ""; 
-    bool editMode1 = false, editMode2 = false;
+    char inputText[3][128] = {"", "", ""};
+    bool editMode[3] = {0};
+
+    bool bool_draw_circle = true;
 
     while (!window.ShouldClose())
     {
         DrawText("Add", 150, 30, 18, GREEN);
 
-        if (GuiTextBox((Rectangle){100, 50, 200, 30}, inputText1, 64,
-                       editMode1))
+        if (GuiTextBox((Rectangle){100, 50, 200, 30}, inputText[0], 64,
+                       editMode[0]))
         {
-            editMode1 = !editMode1;
+            editMode[0] = !editMode[0];
         }
 
-        if (GuiButton((Rectangle){150, 85, 100, 30}, "Gonder"))
+        if (GuiButton((Rectangle){150, 85, 100, 30}, "OK"))
         {
 
-            int x = atoi(inputText1);
+            int x = atoi(inputText[0]);
 
             addCreature(creatures, x);
         }
         /*************/
         DrawText("Delete", 140, 120, 18, GREEN);
 
-        if (GuiTextBox((Rectangle){100, 140, 200, 30}, inputText2, 64, editMode2))
+        if (GuiTextBox((Rectangle){100, 140, 200, 30}, inputText[1], 64, editMode[1]))
         {
-            editMode2 = !editMode2;
+            editMode[1] = !editMode[1];
         }
 
-        if (GuiButton((Rectangle){150, 175, 100, 30}, "Gonder"))
+        if (GuiButton((Rectangle){150, 175, 100, 30}, "OK"))
         {
-
-            int x = atoi(inputText2);
-
+            int x = atoi(inputText[1]);
             deleteCreature(creatures, x);
+        }
+        /****************/
+        DrawText("Add special (hp, atk, sight_area radius, range_area radius)", 80, 210, 18, GREEN);
+
+        if (GuiTextBox((Rectangle){100, 230, 200, 30}, inputText[2], 64, editMode[2]))
+        {
+            editMode[2] = !editMode[2];
+        }
+
+        if (GuiButton((Rectangle){150, 265, 100, 30}, "OK"))
+        {
+            ParseAndAddSpecialCreature(inputText, creatures);
+        }
+
+        if(GuiButton({150, 300, 100, 30}, "Toggle circles"))
+        {
+            bool_draw_circle = !bool_draw_circle;
         }
 
         old_FPS = FPS;
@@ -326,10 +388,13 @@ int main()
             {
                 if(creatures[j]->stats.is_alive) // draw utilities
                 {
-                    DrawCircle(creatures[j]->stats.sight_area.center.x, creatures[j]->stats.sight_area.center.y,
-                        creatures[j]->stats.sight_area.radius, raylib::Color{ 253, 249, 0, 100 });
-                    DrawCircle(creatures[j]->stats.range_area.center.x, creatures[j]->stats.range_area.center.y,
-                        creatures[j]->stats.range_area.radius, raylib::Color{ 0, 228, 48, 100 });
+                    if(bool_draw_circle)
+                    {
+                        DrawCircle(creatures[j]->stats.sight_area.center.x, creatures[j]->stats.sight_area.center.y,
+                            creatures[j]->stats.sight_area.radius, raylib::Color{ 253, 249, 0, 100 });
+                        DrawCircle(creatures[j]->stats.range_area.center.x, creatures[j]->stats.range_area.center.y,
+                            creatures[j]->stats.range_area.radius, raylib::Color{ 0, 228, 48, 100 });
+                    }
                     if(creatures[j]->stats.go_after && creatures[j]->stats.go_after->stats.is_alive)
                         DrawText("!", creatures[j]->stats.pos.x + 15, creatures[j]->stats.pos.y - 15, 30, WHITE);
                     if(creatures[j]->stats.attack && creatures[j]->stats.attack->stats.is_alive)
