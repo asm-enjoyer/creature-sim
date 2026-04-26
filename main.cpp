@@ -15,7 +15,7 @@ raylib::Sound pop_sound;
 enum WALK {UP, DOWN, LEFT, RIGHT};
 
 const int SCREEN_WIDTH = 2500;
-const int SCREEN_HEIGHT = 1300;
+const int SCREEN_HEIGHT = 900;
 
 float FPS = 60;
 float gameTick = 10; // 10 ms = 1 tick
@@ -49,12 +49,19 @@ struct Stats
 {
     float hp, atk;
     Circle sight_area;
+    Circle range_area;
     raylib::Rectangle pos;
+    Creature *go_after;
+    Creature *attack;
+    bool is_alive;
     raylib::Color col;
-    Creature *kill;
+
     Stats() {}
-    Stats(float hp, float atk, Circle sight_area, Creature *kill = nullptr, raylib::Rectangle pos = {0, 0, 10, 10}, raylib::Color col = raylib::Color::Red())
-    : hp(hp), atk(atk), sight_area(sight_area), kill(kill), pos(pos), col(col) {}
+    Stats(float hp, float atk, Circle sight_area, Circle range_area, raylib::Rectangle pos = {0, 0, 10, 10}, bool is_alive = true, 
+        Creature *go_after = nullptr, 
+        Creature *attack = nullptr, 
+        raylib::Color col = raylib::Color::Red())
+    : hp(hp), atk(atk), sight_area(sight_area), range_area(range_area), pos(pos), is_alive(is_alive), go_after(go_after), attack(attack), col(col) {}
 };
 
 class Creature
@@ -68,8 +75,11 @@ class Creature
 
     Creature() {creature_size++;}
 
-    Creature(float hp, float atk, Circle sight_area, Creature *kill = nullptr, raylib::Rectangle pos = {0, 0, 10, 10}, raylib::Color col = raylib::Color::Red()) 
-    : stats(hp, atk, sight_area, kill, pos, col)
+    Creature(float hp, float atk, Circle sight_area, Circle range_area, raylib::Rectangle pos = {0, 0, 10, 10}, bool is_alive = true, 
+        Creature *go_after = nullptr, 
+        Creature *attack = nullptr, 
+        raylib::Color col = raylib::Color::Red()) 
+    : stats(hp, atk, sight_area, range_area, pos, is_alive, go_after, attack, col)
     {   
         creature_size++; 
         if(!pop_sound.IsPlaying())
@@ -87,6 +97,7 @@ class Creature
 
     friend void addCreature(std::vector<Creature *> &creatures, int count);
     friend void deleteCreature(std::vector<Creature *> &creatures, int count);
+    friend void FightBetween(Creature *c1, Creature *c2);
 
     void setRandomColor()
     {
@@ -97,7 +108,6 @@ class Creature
             255
         );
     }
-
     void Wander() 
     {
         int walk_direction = -1;
@@ -132,30 +142,27 @@ class Creature
                 break;
         }
     }
-
     void DrawCreature()
     {
         raylib::Vector2 center(stats.pos.x - stats.pos.width/2, stats.pos.y - stats.pos.height/2);
         raylib::Rectangle(center.x, center.y, stats.pos.width, stats.pos.height).Draw(stats.col);
     }
-
     void checkSight(std::vector<Creature *> &creatures)
     {
         for(size_t i = 0; i < creatures.size(); i++)
         {
-            if(!(stats.pos.x == creatures[i]->stats.pos.x && stats.pos.y == creatures[i]->stats.pos.y) && CheckCollisionCircleRec(stats.sight_area.center, stats.sight_area.radius, creatures[i]->stats.pos))
+            if(creatures[i]->stats.is_alive && !(stats.pos.x == creatures[i]->stats.pos.x && stats.pos.y == creatures[i]->stats.pos.y) && CheckCollisionCircleRec(stats.sight_area.center, stats.sight_area.radius, creatures[i]->stats.pos))
             {
-                stats.kill = creatures[i]; // go after first encountered dot in the array (inappropriate but basic enough)
+                stats.go_after = creatures[i]; // always go after first encountered crtr in the array (inappropriate but basic enough)
                 return;
             }
         }
-        stats.kill = nullptr;
+        stats.go_after = nullptr;
     }
-
     void GoAfter()
     {
         float real_walk_length = walkLength * GetFrameTime();
-        raylib::Vector2 start {stats.pos.x, stats.pos.y}, end {stats.kill->stats.pos.x, stats.kill->stats.pos.y};
+        raylib::Vector2 start {stats.pos.x, stats.pos.y}, end {stats.go_after->stats.pos.x, stats.go_after->stats.pos.y};
         raylib::Vector2 moved = start.MoveTowards(end, real_walk_length);
         stats.pos.x = moved.x;
         stats.pos.y = moved.y;
@@ -177,27 +184,31 @@ class Human : public Creature
 int Creature::creature_size = 0;
 float Creature::walkLength = 800;
 
+/* Friend functions*/
 void addCreature(std::vector<Creature *> &creatures, int count = 1)
 {
-    std::uniform_real_distribution<> randomCoords(2, std::max(SCREEN_HEIGHT - 2, SCREEN_WIDTH - 2));
     for(int i = 0; i < count; i++)
     {
-        raylib::Vector2 rand_pos{static_cast<float>(randomCoords(engine)), static_cast<float>(randomCoords(engine))};
+        raylib::Vector2 rand_pos{static_cast<float>(GetRandomValue(2, SCREEN_WIDTH - 2)), static_cast<float>(GetRandomValue(2, SCREEN_HEIGHT - 2))};
         creatures.push_back(new Human( 
         Stats{
             static_cast<float>(GetRandomValue(1, 20)),
             static_cast<float>(GetRandomValue(1, 10)),
             Circle(150, rand_pos),
+            Circle(30, rand_pos),
+            raylib::Rectangle(rand_pos.x, rand_pos.y, 5, 5),
+            true,
             nullptr,
-            raylib::Rectangle(rand_pos.x, rand_pos.y, 5, 5)
+            nullptr,
+            raylib::Color
+            (static_cast<unsigned char>(GetRandomValue(100, 255)), 
+            static_cast<unsigned char>(GetRandomValue(100, 255)),
+            static_cast<unsigned char>(GetRandomValue(100, 255)),
+            255)
             }
         ));
-        creatures.back()->setRandomColor();
-
-        
     }
 }
-
 void deleteCreature(std::vector<Creature *> &creatures, int count = 1)
 {
     int delete_count = Creature::creature_size > count ? count : Creature::creature_size;
@@ -208,7 +219,26 @@ void deleteCreature(std::vector<Creature *> &creatures, int count = 1)
         creatures.erase(last_elem_p);
     }
 }
+void FightBetween(Creature *c1, Creature *c2)
+{
+    c1->stats.hp -= c2->stats.atk;
+    c2->stats.hp -= c1->stats.atk;
 
+    if (c1->stats.hp <= 0) 
+    {
+        c1->stats.is_alive = false;
+        c2->stats.go_after = nullptr;
+        c1->stats.attack = nullptr;
+        c1->stats.hp = 0;
+    }
+    if (c2->stats.hp <= 0)
+    {
+        c2->stats.is_alive = false;
+        c2->stats.go_after = nullptr;
+        c2->stats.attack = nullptr;
+        c2->stats.hp = 0;
+    }
+}
 
 int main() 
 {
@@ -234,27 +264,42 @@ int main()
     bool showUI = true;
     float old_FPS;
 
+    char inputText1[64] = "", inputText2[64] = ""; 
+    bool editMode1 = false, editMode2 = false;
+
     while (!window.ShouldClose())
-    {   
-        if(GuiButton({700, 300, 90, 30}, "add 1 point"))
-            addCreature(creatures);
-        if(GuiButton({700, 330, 90, 30}, "add 10 points"))
-            addCreature(creatures, 10);
-        if(GuiButton({700, 360, 90, 30}, "add 100 points"))
-            addCreature(creatures, 100);
-        if(GuiButton({700, 390, 90, 30}, "add 1000 points"))
-            addCreature(creatures, 1000);
-        if(GuiButton({700, 420, 90, 30}, "add 10000 points"))
-            addCreature(creatures, 10000);
-        if(GuiButton({790, 300, 90, 30}, "delete 1 point"))
-            deleteCreature(creatures);
-        if(GuiButton({790, 330, 90, 30}, "delete 10 points"))
-            deleteCreature(creatures, 10);
-        if(GuiButton({790, 360, 90, 30}, "delete 100 points"))
-            deleteCreature(creatures, 100);
-        if(GuiButton({790, 390, 90, 30}, "delete 1000 points"))
-            deleteCreature(creatures, 1000);
-        
+    {
+        DrawText("Add", 150, 30, 18, GREEN);
+
+        if (GuiTextBox((Rectangle){100, 50, 200, 30}, inputText1, 64,
+                       editMode1))
+        {
+            editMode1 = !editMode1;
+        }
+
+        if (GuiButton((Rectangle){150, 85, 100, 30}, "Gonder"))
+        {
+
+            int x = atoi(inputText1);
+
+            addCreature(creatures, x);
+        }
+        /*************/
+        DrawText("Delete", 140, 120, 18, GREEN);
+
+        if (GuiTextBox((Rectangle){100, 140, 200, 30}, inputText2, 64, editMode2))
+        {
+            editMode2 = !editMode2;
+        }
+
+        if (GuiButton((Rectangle){150, 175, 100, 30}, "Gonder"))
+        {
+
+            int x = atoi(inputText2);
+
+            deleteCreature(creatures, x);
+        }
+
         old_FPS = FPS;
         GuiSliderBar({1200, 20, 200, 20}, "30", "300", &FPS, 30, 300);
         if(static_cast<int>(old_FPS) != static_cast<int>(FPS))
@@ -277,32 +322,61 @@ int main()
             if(debugEnabled)
                 DrawText(TextFormat("Creature::creature_size: %d", Creature::creature_size), 300, 300, 20, RED);
             
-            for(int j = 0; j < Creature::creature_size; j++)
+            for(int j = 0; j < Creature::creature_size; j++) // draw sight area circles
             {
-                DrawCircle(creatures[j]->stats.sight_area.center.x, creatures[j]->stats.sight_area.center.y,
-                creatures[j]->stats.sight_area.radius, raylib::Color{ 253, 249, 0, 100 });
-                if(creatures[j]->stats.kill)
-                    DrawText("!", creatures[j]->stats.pos.x + 15, creatures[j]->stats.pos.y - 15, 30, WHITE);
+                if(creatures[j]->stats.is_alive) // draw utilities
+                {
+                    DrawCircle(creatures[j]->stats.sight_area.center.x, creatures[j]->stats.sight_area.center.y,
+                        creatures[j]->stats.sight_area.radius, raylib::Color{ 253, 249, 0, 100 });
+                    DrawCircle(creatures[j]->stats.range_area.center.x, creatures[j]->stats.range_area.center.y,
+                        creatures[j]->stats.range_area.radius, raylib::Color{ 0, 228, 48, 100 });
+                    if(creatures[j]->stats.go_after && creatures[j]->stats.go_after->stats.is_alive)
+                        DrawText("!", creatures[j]->stats.pos.x + 15, creatures[j]->stats.pos.y - 15, 30, WHITE);
+                    if(creatures[j]->stats.attack && creatures[j]->stats.attack->stats.is_alive)
+                        DrawText("!", creatures[j]->stats.pos.x + 20, creatures[j]->stats.pos.y - 15, 30, WHITE);
+                    DrawText(TextFormat("hp: %.0f", creatures[j]->stats.hp), creatures[j]->stats.pos.x - 5, creatures[j]->stats.pos.y - 15, 5, GREEN);
+                    DrawText(TextFormat("atk: %.0f", creatures[j]->stats.atk), creatures[j]->stats.pos.x - 5, creatures[j]->stats.pos.y - 10, 5, GREEN);
+                }
             }
 
-            if(i++ % convertFromGameTick(FPS) == 0)
+            if(i++ % convertFromGameTick(FPS) == 0) // where the game progresses
             {
                 for(int j = 0; j < Creature::creature_size; j++)
                 {
-                    creatures[j]->checkSight(creatures);
-                    if(creatures[j]->stats.kill)
+                    if (creatures[j]->stats.is_alive)
                     {
-                        creatures[j]->GoAfter();
+                        creatures[j]->checkSight(creatures);
+                        if (creatures[j]->stats.go_after && creatures[j]->stats.go_after->stats.is_alive)
+                        {
+                            if (CheckCollisionCircleRec(
+                            creatures[j]->stats.range_area.center,
+                            creatures[j]->stats.range_area.radius,
+                            creatures[j]->stats.go_after->stats.pos)) // whether j's go_after, touching j's range circle or not
+                            {
+                                creatures[j]->stats.attack = creatures[j]->stats.go_after;
+                                creatures[j]->stats.go_after->stats.attack = creatures[j];
+                                FightBetween(creatures[j], creatures[j]->stats.go_after);
+                            }
+
+                            else
+                            {
+                                creatures[j]->stats.attack = creatures[j]->stats.go_after->stats.attack = nullptr;
+                                creatures[j]->GoAfter();
+                            }
+                        }
+                        else
+                            creatures[j]->Wander();
+                        if (creatures[j]->stats.is_alive)
+                            creatures[j]->stats.sight_area.center = 
+                            creatures[j]->stats.range_area.center = raylib::Vector2(creatures[j]->stats.pos.x, creatures[j]->stats.pos.y);
                     }
-                    else
-                        creatures[j]->Wander();
-                    creatures[j]->stats.sight_area.center = raylib::Vector2(creatures[j]->stats.pos.x, creatures[j]->stats.pos.y);
                 }
             }
             
             for(int j = 0; j < Creature::creature_size; j++)
             {
-                creatures[j]->DrawCreature();
+                if (creatures[j]->stats.is_alive)
+                    creatures[j]->DrawCreature();
             }
         window.EndDrawing();
     }
