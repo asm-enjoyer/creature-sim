@@ -96,6 +96,9 @@ class Creature
     friend void addCreature(std::vector<Creature *> &creatures, int count, Stats *stats_local);
     friend void deleteCreature(std::vector<Creature *> &creatures, int count);
     friend void FightBetween(Creature *c1, Creature *c2);
+    friend void deleteKilled(std::vector<Creature *> &creatures);
+
+    void swap_pop(std::vector<Creature *> &creatures, size_t i);
 
     void setRandomColor()
     {
@@ -253,6 +256,23 @@ void FightBetween(Creature *c1, Creature *c2)
         c2->stats.hp = 0;
     }
 }
+void deleteKilled(std::vector<Creature *> &creatures)
+{
+    for(size_t i = 0; i < creatures.size(); )
+    {
+        if(creatures[i] && !creatures[i]->stats.is_alive)
+        {
+            swap_pop(creatures, i);
+        }
+        else i++;
+    }
+}
+void swap_pop(std::vector<Creature *> &creatures, size_t i)
+{
+    delete creatures[i];
+    creatures[i] = creatures.back();
+    creatures.pop_back();
+}
 /***************** */
 
 void ParseAndAddSpecialCreature(char inputText[3][128], std::vector<Creature *> &creatures)
@@ -374,6 +394,12 @@ int main()
             bool_draw_circle = !bool_draw_circle;
         }
 
+        if (GuiButton((Rectangle){130, 350, 200, 30}, "Delete 0 health crtrs"))
+        {
+            deleteKilled(creatures);
+            // creatures.shrink_to_fit();
+        }
+
         old_FPS = FPS;
         GuiSliderBar({1200, 20, 200, 20}, "30", "300", &FPS, 30, 300);
         if(static_cast<int>(old_FPS) != static_cast<int>(FPS))
@@ -393,7 +419,7 @@ int main()
                     creatures[0]->wayCount[2], 
                     creatures[0]->wayCount[3]), 10, 370, 25, GREEN);
             
-            if(debugEnabled)
+            if(1)
                 DrawText(TextFormat("Creature::creature_size: %d", Creature::creature_size), 300, 300, 20, RED);
             
             for(int j = 0; j < Creature::creature_size; j++) // draw sight area circles
