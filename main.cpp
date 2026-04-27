@@ -147,15 +147,27 @@ class Creature
     }
     void checkSight(std::vector<Creature *> &creatures)
     {
+        float min_distance_squ = INFINITY;
+        float new_dist_squ;
+        Creature *closest = nullptr;
         for(size_t i = 0; i < creatures.size(); i++)
         {
             if(creatures[i]->stats.is_alive && !(stats.pos.x == creatures[i]->stats.pos.x && stats.pos.y == creatures[i]->stats.pos.y) && CheckCollisionCircleRec(stats.sight_area.center, stats.sight_area.radius, creatures[i]->stats.pos))
             {
-                stats.go_after = creatures[i]; // always go after first encountered crtr in the array (inappropriate but basic enough)
-                return;
+                float x = creatures[i]->stats.pos.x;
+                float y = creatures[i]->stats.pos.y;
+                // don't use sqrt, just compare squared distances (more efficient)
+                if((new_dist_squ = powf(stats.pos.x - x, 2) + powf(stats.pos.y - y, 2)) < min_distance_squ)
+                {
+                    min_distance_squ = new_dist_squ;
+                    closest = creatures[i];
+                }
             }
         }
-        stats.go_after = nullptr;
+        if(closest)
+            stats.go_after = closest;
+        else
+            stats.go_after = nullptr;
     }
     void GoAfter()
     {
