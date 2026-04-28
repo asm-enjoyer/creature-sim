@@ -67,6 +67,7 @@ class Creature
     public:
     Stats stats;
     static float walkLength;
+    static raylib::Vector2 wander_limit;
     int wayCount[4] = {0};
 
     static int creature_size;
@@ -114,11 +115,11 @@ class Creature
 
         if(stats.pos.y - 1 > 0)
             possible_directions.push_back(UP);
-        if(stats.pos.y + 1 < SCREEN_HEIGHT)
+        if(stats.pos.y + 1 < Creature::wander_limit.y)
             possible_directions.push_back(DOWN);
         if(stats.pos.x - 1 > 0)
             possible_directions.push_back(LEFT);
-        if(stats.pos.x + 1 < SCREEN_WIDTH)
+        if(stats.pos.x + 1 < Creature::wander_limit.x)
             possible_directions.push_back(RIGHT);
         
         float deltaTime = GetFrameTime();
@@ -194,6 +195,7 @@ class Human : public Creature
 
 int Creature::creature_size = 0;
 float Creature::walkLength = 800;
+raylib::Vector2 Creature::Creature::wander_limit(50000, 50000);
 
 /* Friend functions*/
 void addCreature(std::vector<Creature *> &creatures, int count = 1, Stats *stats_local = nullptr)
@@ -208,8 +210,8 @@ void addCreature(std::vector<Creature *> &creatures, int count = 1, Stats *stats
         else
         {
             raylib::Vector2 rand_pos{
-                static_cast<float>(GetRandomValue(2, SCREEN_WIDTH - 2)),
-                static_cast<float>(GetRandomValue(2, SCREEN_HEIGHT - 2))};
+                static_cast<float>(GetRandomValue(2, Creature::wander_limit.x - 2)),
+                static_cast<float>(GetRandomValue(2, Creature::wander_limit.y - 2))};
             creatures.push_back(new Human(
                 Stats{static_cast<float>(GetRandomValue(1, 20)),
                       static_cast<float>(GetRandomValue(1, 10)),
@@ -314,9 +316,12 @@ void ParseAndAddSpecialCreature(char inputText[3][128], std::vector<Creature *> 
             j = 0;
         }
     }
+    
+    inputText[2][strlen(inputText[2])] = ',';
+    inputText[2][strlen(inputText[2]) + 1] = '\0';
     new_stats.pos =
-        raylib::Rectangle(GetRandomValue(2, SCREEN_WIDTH - 2),
-                          GetRandomValue(2, SCREEN_HEIGHT - 2), 5, 5);
+        raylib::Rectangle(GetRandomValue(2, Creature::wander_limit.x - 2),
+                          GetRandomValue(2, Creature::wander_limit.y - 2), 5, 5);
     addCreature(creatures, 1, &new_stats);
 }
 
@@ -335,6 +340,8 @@ int main()
 
     pop_sound = raylib::Sound("my_pop_sound.mp3");
 
+    raylib::Camera2D cam2d = raylib::Camera2D(Vector2{SCREEN_WIDTH / 2.0, SCREEN_HEIGHT / 2.0}, {0, 0});
+
     std::vector<Creature*> creatures;
 
     addCreature(creatures, 10);
@@ -343,13 +350,48 @@ int main()
     bool showUI = true;
     float old_FPS;
 
-    char inputText[3][128] = {"", "", ""};
+    char inputText[3][128] = {"500", "500", ""};
     bool editMode[3] = {0};
 
     bool bool_draw_circle = true;
+    raylib::Vector2 old_m_pos(0, 0), mouse_pos;
+    float mwheel_move;
 
     while (!window.ShouldClose())
     {
+        /************* CAMERA ************/
+        mouse_pos = GetMousePosition();
+        mwheel_move = GetMouseWheelMove();
+
+        if(mwheel_move)
+        {
+            // Get the world point that is under the mouse
+            Vector2 mouseWorldPos = GetScreenToWorld2D(GetMousePosition(), cam2d);
+
+            // Set the offset to where the mouse is
+            cam2d.offset = GetMousePosition();
+
+            // Set the target to match, so that the camera maps the world space
+            // point under the cursor to the screen space point under the cursor
+            // at any zoom
+            cam2d.target = mouseWorldPos;
+
+            // Zoom increment
+            // Uses log scaling to provide consistent zoom speed
+            float scale = 0.2f * mwheel_move;
+            cam2d.zoom = (expf(logf(cam2d.zoom) + scale));
+        }
+        
+        cam2d.zoom = expf(logf(cam2d.zoom) + (mwheel_move*0.1f));
+        
+        if(IsMouseButtonDown(MOUSE_BUTTON_LEFT))
+        {
+            cam2d.offset.x += mouse_pos.x - old_m_pos.x;
+            cam2d.offset.y += mouse_pos.y - old_m_pos.y;
+        }
+        old_m_pos = mouse_pos;
+
+        /************* GUI ************/
         DrawText("Add", 150, 30, 18, GREEN);
 
         if (GuiTextBox((Rectangle){100, 50, 200, 30}, inputText[0], 64, editMode[0]))
@@ -423,6 +465,7 @@ int main()
             if(1)
                 DrawText(TextFormat("Creature::creature_size: %d", Creature::creature_size), 300, 300, 20, RED);
             
+        cam2d.BeginMode();
             for(int j = 0; j < Creature::creature_size; j++) // draw sight area circles
             {
                 if(creatures[j]->stats.is_alive) // draw utilities
@@ -438,14 +481,14 @@ int main()
                         DrawText("!", creatures[j]->stats.pos.x + 15, creatures[j]->stats.pos.y - 15, 30, WHITE);
                     if(creatures[j]->stats.attack && creatures[j]->stats.attack->stats.is_alive)
                         DrawText("!", creatures[j]->stats.pos.x + 20, creatures[j]->stats.pos.y - 15, 30, WHITE);
-                    DrawText(TextFormat("hp: %.0f", creatures[j]->stats.hp), creatures[j]->stats.pos.x - 5, creatures[j]->stats.pos.y - 15, 5, GREEN);
-                    DrawText(TextFormat("atk: %.0f", creatures[j]->stats.atk), creatures[j]->stats.pos.x - 5, creatures[j]->stats.pos.y - 10, 5, GREEN);
+                    DrawText(TextFormat("hp: %.0f", creatures[j]->stats.hp), creatures[j]->stats.pos.x - 5, creatures[j]->stats.pos.y - 25, 5, GREEN);
+                    DrawText(TextFormat("atk: %.0f", creatures[j]->stats.atk), creatures[j]->stats.pos.x - 5, creatures[j]->stats.pos.y - 15, 5, GREEN);
                 }
             }
 
             if(i++ % convertFromGameTick(FPS) == 0) // where the game progresses
             {
-                i = 0;
+                i = 1;
                 for(int j = 0; j < Creature::creature_size; j++)
                 {
                     if (creatures[j]->stats.is_alive)
@@ -483,6 +526,7 @@ int main()
                 if (creatures[j]->stats.is_alive)
                     creatures[j]->DrawCreature();
             }
+        cam2d.EndMode();
         window.EndDrawing();
     }
 
