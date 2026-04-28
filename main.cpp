@@ -98,8 +98,6 @@ class Creature
     friend void FightBetween(Creature *c1, Creature *c2);
     friend void deleteKilled(std::vector<Creature *> &creatures);
 
-    void swap_pop(std::vector<Creature *> &creatures, size_t i);
-
     void setRandomColor()
     {
         stats.col = raylib::Color(
@@ -236,10 +234,11 @@ void deleteCreature(std::vector<Creature *> &creatures, int count = 1)
         creatures.erase(last_elem_p);
     }
 }
-void FightBetween(Creature *c1, Creature *c2)
+void FightBetween(Creature *c1, Creature *c2) // c1 must be the one who sees first
 {
-    c1->stats.hp -= c2->stats.atk;
-    c2->stats.hp -= c1->stats.atk;
+    if(c1->stats.range_area.radius <= c2->stats.range_area.radius)
+        c1->stats.hp -= c2->stats.atk;
+    c2->stats.hp -= c1->stats.atk; // TODO burada menzile giren, girmeyene saldýrýrsa girmeyen de saldýrýyor. saldýrmayan sabit kalmýyor orasý iyi.
 
     if (c1->stats.hp <= 0) 
     {
@@ -256,6 +255,9 @@ void FightBetween(Creature *c1, Creature *c2)
         c2->stats.hp = 0;
     }
 }
+
+void swap_pop(std::vector<Creature *> &creatures, size_t i);
+
 void deleteKilled(std::vector<Creature *> &creatures)
 {
     for(size_t i = 0; i < creatures.size(); )
@@ -350,8 +352,7 @@ int main()
     {
         DrawText("Add", 150, 30, 18, GREEN);
 
-        if (GuiTextBox((Rectangle){100, 50, 200, 30}, inputText[0], 64,
-                       editMode[0]))
+        if (GuiTextBox((Rectangle){100, 50, 200, 30}, inputText[0], 64, editMode[0]))
         {
             editMode[0] = !editMode[0];
         }
@@ -444,6 +445,7 @@ int main()
 
             if(i++ % convertFromGameTick(FPS) == 0) // where the game progresses
             {
+                i = 0;
                 for(int j = 0; j < Creature::creature_size; j++)
                 {
                     if (creatures[j]->stats.is_alive)
