@@ -367,6 +367,19 @@ void ParseAndAddSpecialCreature(char inputText[128], std::vector<Creature *> &cr
     addCreature(creatures, 1, &new_stats);
 }
 
+raylib::Rectangle GetCameraVisibleArea2D(Camera2D camera) 
+{
+    Vector2 topLeft = GetScreenToWorld2D((Vector2){ 0.0f, 0.0f }, camera);
+    Vector2 bottomRight = GetScreenToWorld2D((Vector2){ (float)GetScreenWidth(), (float)GetScreenHeight() }, camera);
+
+    return raylib::Rectangle{ 
+        topLeft.x, 
+        topLeft.y, 
+        bottomRight.x - topLeft.x, 
+        bottomRight.y - topLeft.y 
+    };
+}
+
 int main()
 {
     SetRandomSeed(time(0));
@@ -390,6 +403,7 @@ int main()
     int i = 0;
     bool showUI = true;
     float old_FPS;
+    int j = 0;
 
     char inputText[3][128] = {"500", "500", ""};
     bool editMode[3] = {0};
@@ -403,6 +417,7 @@ int main()
     while (!window.ShouldClose())
     {
         /************* CAMERA ************/
+        {
         mouse_pos = GetMousePosition();
         mwheel_move = GetMouseWheelMove();
 
@@ -433,7 +448,8 @@ int main()
             cam2d.offset.y += mouse_pos.y - old_m_pos.y;
         }
         old_m_pos = mouse_pos;
-
+        }
+        {
         /************* GUI ************/
         DrawText("Add", 150, 30, 18, GREEN);
 
@@ -490,6 +506,7 @@ int main()
         GuiSliderBar({1200, 20, 200, 20}, "30", "300", &FPS, 30, 300);
         if(static_cast<int>(old_FPS) != static_cast<int>(FPS))
             window.SetTargetFPS(FPS);
+        }
 
         window.BeginDrawing();
             window.ClearBackground(raylib::Color::Black());
@@ -509,9 +526,11 @@ int main()
                 DrawText(TextFormat("Creature::creature_size: %d", Creature::creature_size), 300, 300, 20, RED);
             
         cam2d.BeginMode();
-            for(int j = 0; j < Creature::creature_size; j++) // draw sight area circles
+            raylib::Rectangle cam_visible_area = GetCameraVisibleArea2D(cam2d);
+            for(int j = 0; j < Creature::creature_size; j++) // draw zone
             {
-                if(creatures[j]->stats.is_alive) // draw utilities
+                
+                if(creatures[j]->stats.is_alive && CheckCollisionRecs(creatures[j]->stats.pos, cam_visible_area))
                 {
                     if(bool_draw_circle)
                     {
@@ -529,6 +548,12 @@ int main()
                     DrawText(TextFormat("atk: %.0f", creatures[j]->stats.atk), creatures[j]->stats.pos.x - 5, creatures[j]->stats.pos.y - 25, 5, GREEN);
                     DrawText(TextFormat("hit ch: %.2f", creatures[j]->stats.hit_chance), creatures[j]->stats.pos.x - 5, creatures[j]->stats.pos.y - 15, 5, GREEN);
                 }
+            }
+
+            if(j++ % 50 == 0) // auto delete killed
+            {
+                j = 1;
+                deleteKilled(creatures);
             }
 
             if(i++ % convertFromGameTick(FPS) == 0) // game progresses here
@@ -585,7 +610,7 @@ int main()
             
             for(int j = 0; j < Creature::creature_size; j++)
             {
-                if (creatures[j]->stats.is_alive)
+                if (creatures[j]->stats.is_alive && CheckCollisionRecs(creatures[j]->stats.pos, cam_visible_area))
                     creatures[j]->DrawCreature();
             }
         cam2d.EndMode();
