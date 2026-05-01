@@ -305,47 +305,62 @@ void swap_pop(std::vector<Creature *> &creatures, size_t i)
     creatures.pop_back();
 }
 /***************** */
+void MoveByKey(std::vector<Creature *> &creatures, int j)
+{
+    float deltatime_walk = Creature::walkLength * GetFrameTime();
+    if (IsKeyDown(KEY_W)) creatures[j]->stats.pos.y -= deltatime_walk;
+    if (IsKeyDown(KEY_A)) creatures[j]->stats.pos.x -= deltatime_walk;
+    if (IsKeyDown(KEY_S)) creatures[j]->stats.pos.y += deltatime_walk;
+    if (IsKeyDown(KEY_D)) creatures[j]->stats.pos.x += deltatime_walk;
+}
 
-void ParseAndAddSpecialCreature(char inputText[3][128], std::vector<Creature *> &creatures)
+void ParseAndAddSpecialCreature(char inputText[128], std::vector<Creature *> &creatures)
 {
     Stats new_stats;
-    int ctr = 0;
-    char str[128];
-    strcpy(str, inputText[2]);
-    char split[20] = "";
-    int j = 0;
-    for (int i = 0; str[i] != '\0'; i++)
+    std::string input_text(inputText), token;
+    std::stringstream ss(input_text);
+
+    std::vector<std::string> string_vec;
+
+    while(ss >> token)
     {
-        if (isspace(str[i])) continue;
-
-        if (str[i] != ',')
-            split[j++] = str[i];
-
-        else
+        if(token == "hp")
         {
-            split[j] = '\0';
-            switch (ctr)
-            {
-            case 0:
-                new_stats.hp = static_cast<float>(atoi(split));
-                break;
-            case 1:
-                new_stats.atk = static_cast<float>(atoi(split));
-                break;
-            case 2:
-                new_stats.sight_area.radius = static_cast<float>(atoi(split));
-                break;
-            case 3:
-                new_stats.range_area.radius = static_cast<float>(atoi(split));
-                break;
-            }
-            ctr++;
-            j = 0;
+            ss >> token;
+            new_stats.hp = std::stof(token);
         }
+
+        else if(token == "atk")
+        {
+            ss >> token;
+            new_stats.atk = std::stof(token);
+        }
+
+        else if(token == "hit_chance" || token == "hc")
+        {
+            ss >> token;
+            new_stats.hit_chance = std::stof(token);
+        }
+        
+        else if(token == "human_controlled" || token == "humc")
+        {
+            new_stats.human_controlled = true;
+        }
+
+        else if(token == "sight_r" || token == "sr")
+        {
+            ss >> token;
+            new_stats.sight_area.radius = std::stof(token);
+        }
+        
+        else if(token == "range_r" || token == "rr")
+        {
+            ss >> token;
+            new_stats.range_area.radius = std::stof(token);
+        }
+        
     }
-    
-    inputText[2][strlen(inputText[2])] = ',';
-    inputText[2][strlen(inputText[2]) + 1] = '\0';
+
     new_stats.pos =
         raylib::Rectangle(GetRandomValue(2, Creature::wander_limit.x - 2),
                           GetRandomValue(2, Creature::wander_limit.y - 2), 5, 5);
@@ -360,19 +375,16 @@ int main()
     window.SetTargetFPS(FPS);
 
     raylib::AudioDevice audio;
-    
     if(!audio.IsReady())
     {
         std::cerr << "Sound couldn't be initialized.\n";
         return 1;
     }
-
     pop_sound = raylib::Sound("my_pop_sound.mp3");
 
     raylib::Camera2D cam2d = raylib::Camera2D(Vector2{SCREEN_WIDTH / 2.0, SCREEN_HEIGHT / 2.0}, {0, 0});
 
     std::vector<Creature*> creatures;
-
     addCreature(creatures, 10);
 
     int i = 0;
@@ -385,6 +397,8 @@ int main()
     bool bool_draw_circle = true;
     raylib::Vector2 old_m_pos(0, 0), mouse_pos;
     float mwheel_move;
+
+    bool moved_before;
 
     while (!window.ShouldClose())
     {
@@ -449,7 +463,7 @@ int main()
             deleteCreature(creatures, x);
         }
         /****************/
-        DrawText("Add special (hp, atk, sight_area radius, range_area radius)", 80, 210, 18, GREEN);
+        DrawText("Add special (ex: atk 20 hp 10 humc hc 0.3)", 80, 210, 18, GREEN);
 
         if (GuiTextBox((Rectangle){100, 230, 200, 30}, inputText[2], 64, editMode[2]))
         {
@@ -458,7 +472,7 @@ int main()
 
         if (GuiButton((Rectangle){150, 265, 100, 30}, "OK"))
         {
-            ParseAndAddSpecialCreature(inputText, creatures);
+            ParseAndAddSpecialCreature(inputText[2], creatures);
         }
 
         if(GuiButton({150, 300, 100, 30}, "Toggle circles"))
@@ -510,13 +524,16 @@ int main()
                         DrawText("!", creatures[j]->stats.pos.x + 15, creatures[j]->stats.pos.y - 15, 30, WHITE);
                     if(creatures[j]->stats.attack && creatures[j]->stats.attack->stats.is_alive)
                         DrawText("!", creatures[j]->stats.pos.x + 20, creatures[j]->stats.pos.y - 15, 30, WHITE);
-                    DrawText(TextFormat("hp: %.0f", creatures[j]->stats.hp), creatures[j]->stats.pos.x - 5, creatures[j]->stats.pos.y - 25, 5, GREEN);
-                    DrawText(TextFormat("atk: %.0f", creatures[j]->stats.atk), creatures[j]->stats.pos.x - 5, creatures[j]->stats.pos.y - 15, 5, GREEN);
+                    DrawText(TextFormat("  %d", j), creatures[j]->stats.pos.x - 5, creatures[j]->stats.pos.y - 45, 5, GREEN);
+                    DrawText(TextFormat("hp: %.0f", creatures[j]->stats.hp), creatures[j]->stats.pos.x - 5, creatures[j]->stats.pos.y - 35, 5, GREEN);
+                    DrawText(TextFormat("atk: %.0f", creatures[j]->stats.atk), creatures[j]->stats.pos.x - 5, creatures[j]->stats.pos.y - 25, 5, GREEN);
+                    DrawText(TextFormat("hit ch: %.2f", creatures[j]->stats.hit_chance), creatures[j]->stats.pos.x - 5, creatures[j]->stats.pos.y - 15, 5, GREEN);
                 }
             }
 
             if(i++ % convertFromGameTick(FPS) == 0) // game progresses here
             {
+                moved_before = false;
                 i = 1;
                 for(int j = 0; j < Creature::creature_size; j++)
                 {
@@ -535,17 +552,31 @@ int main()
                                 creatures[j]->stats.go_after->stats.attack = creatures[j];
                                 // fight between them
                                 FightBetween(creatures[j], creatures[j]->stats.go_after);
+                                if(creatures[j]->stats.human_controlled)
+                                {
+                                    MoveByKey(creatures, j);
+                                    moved_before = true;
+                                }
                             }
 
                             else
                             {
+                                // j can't attack it, so goes after it 
                                 creatures[j]->stats.attack = creatures[j]->stats.go_after->stats.attack = nullptr;
-                                creatures[j]->GoAfter();
+                                if(!creatures[j]->stats.human_controlled)
+                                    creatures[j]->GoAfter();
+                                else
+                                {
+                                    MoveByKey(creatures, j);
+                                    moved_before = true;
+                                }
                             }
                         }
-                        else
-                            creatures[j]->Wander();
-                        if (creatures[j]->stats.is_alive)
+                        else if(!creatures[j]->stats.human_controlled)
+                            creatures[j]->Wander(); // can't see anyone, wander randomly
+                        else if(!moved_before)
+                            MoveByKey(creatures, j);
+                        if (creatures[j]->stats.is_alive) // update sight and range area centers
                             creatures[j]->stats.sight_area.center = 
                             creatures[j]->stats.range_area.center = raylib::Vector2(creatures[j]->stats.pos.x, creatures[j]->stats.pos.y);
                     }
