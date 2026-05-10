@@ -217,6 +217,113 @@ class Human : public Creature
     Human(Stats stats) 
     : Creature(stats) {}
 };
+struct Grid
+{
+    std::vector< std::vector< std::pair< raylib::Rectangle, std::vector<Creature *> > > > cells;
+    int sq_num; // number of squares in one side of the grid
+    raylib::Rectangle total_area;
+    float side_length;
+
+    Grid(int sq_num = 10, raylib::Rectangle total_area = raylib::Rectangle(-20, -20, wander_limit.x + 20, wander_limit.y + 20))
+    : sq_num(sq_num), total_area(total_area), side_length(total_area.width / sq_num)
+    {
+        cells.resize(sq_num); 
+
+        for(int y = 0; y < sq_num; ++y)
+        {
+            float coordY = total_area.y + (y * side_length);
+            for(int x = 0; x < sq_num; ++x)
+            {
+                float coordX = total_area.x + (x * side_length);
+                
+                cells[y].push_back(std::pair<raylib::Rectangle, std::vector<Creature*>>(
+                    raylib::Rectangle(coordX, coordY, side_length, side_length), 
+                    std::vector<Creature*>()
+                ));
+            }
+        }
+    }
+
+    void UpdateCells(const std::vector<Creature *> &creatures)
+    {
+        // clear cell info from previous frame
+        for(int y = 0; y < sq_num; ++y)
+        {
+            for(int x = 0; x < sq_num; ++x)
+            {
+                cells[y][x].second.clear();
+            }
+        }
+
+        for(size_t i = 0; i < creatures.size(); i++)
+        {
+            if(creatures[i]->stats.is_alive)
+            {
+                int inX = static_cast<int>((creatures[i]->stats.pos.x - total_area.x) / side_length);
+                int inY = static_cast<int>((creatures[i]->stats.pos.y - total_area.y) / side_length);
+
+                // check if out of grid. or game crashes.
+                if (inX >= 0 && inX < sq_num && inY >= 0 && inY < sq_num)
+                {
+                    cells[inY][inX].second.push_back(creatures[i]);
+                }
+            }
+        }
+    }
+
+    /// @brief More optimized sight checker. 
+    /// CheckSight takes the return vector and traverses it instead of all creatures.
+    /// @param center_crtr 
+    /// @return return vector with creatures who center creature can see
+    std::vector<Creature *> GridCheckSight(Creature *&center_crtr)
+    {
+        auto center = center_crtr->stats; // shortcut for long writing
+        raylib::Vector2 min_point(center.pos.x - center.sight_area.radius, center.pos.y - center.sight_area.radius),
+                        max_point(center.pos.x + center.sight_area.radius, center.pos.y + center.sight_area.radius);
+        
+        int start_x = std::max(0,          static_cast<int>((min_point.x - total_area.x) / side_length));
+        int end_x   = std::min(sq_num - 1, static_cast<int>((max_point.x - total_area.x) / side_length));
+        int start_y = std::max(0,          static_cast<int>((min_point.y - total_area.y) / side_length));
+        int end_y   = std::min(sq_num - 1, static_cast<int>((max_point.y - total_area.y) / side_length));
+
+        float radius_sq = center.sight_area.radius * center.sight_area.radius;
+
+        std::vector<Creature *> creatures_in_range;
+
+        for (int y = start_y; y <= end_y; ++y)
+        {
+            for (int x = start_x; x <= end_x; ++x)
+            {
+                for (Creature *other : cells[y][x].second)
+                {
+                    if (other == center_crtr) 
+                        continue;
+
+                    float dx = other->stats.pos.x - center_crtr->stats.pos.x;
+                    float dy = other->stats.pos.y - center_crtr->stats.pos.y;
+
+                    if ((dx * dx + dy * dy) <= radius_sq)
+                    {
+                        creatures_in_range.push_back(other);
+                    }
+                }
+            }
+        }
+
+        return creatures_in_range;
+    }
+
+    void DrawGrid()
+    {
+        for(int i = 0; i < cells.size(); i++)
+        {
+            for(int j = 0; j < cells[i].size(); j++)
+            {
+                cells[i][j].first.DrawLines(WHITE);
+            }
+        }
+    }
+};
 
 int Creature::creature_size = 0;
 float Creature::walkLength = 800;
@@ -273,14 +380,14 @@ void FightBetween(Creature *c1, Creature *c2) // c1 must be the one who sees fir
     {
         c1->stats.is_alive = false;
         c2->stats.go_after = nullptr;
-        c1->stats.attack = nullptr;
+        c2->stats.attack = nullptr;
         c1->stats.hp = 0;
     }
     if (c2->stats.hp <= 0)
     {
         c2->stats.is_alive = false;
-        c2->stats.go_after = nullptr;
-        c2->stats.attack = nullptr;
+        c1->stats.go_after = nullptr;
+        c1->stats.attack = nullptr;
         c2->stats.hp = 0;
     }
 }
@@ -400,6 +507,8 @@ int main()
     std::vector<Creature*> creatures;
     addCreature(creatures, 10);
 
+    Grid grid;
+
     int i = 0;
     bool showUI = true;
     float old_FPS;
@@ -408,7 +517,7 @@ int main()
     char inputText[3][128] = {"500", "500", ""};
     bool editMode[3] = {0};
 
-    bool bool_draw_circle = true;
+    bool bool_draw_circle = true, bool_draw_grid = false;
     raylib::Vector2 old_m_pos(0, 0), mouse_pos;
     float mwheel_move;
 
@@ -501,6 +610,11 @@ int main()
             deleteKilled(creatures);
             // creatures.shrink_to_fit();
         }
+        
+        if(GuiButton({150, 370, 100, 30}, "Toggle grid"))
+        {
+            bool_draw_grid = !bool_draw_grid;
+        }
 
         old_FPS = FPS;
         GuiSliderBar({1200, 20, 200, 20}, "30", "300", &FPS, 30, 300);
@@ -529,7 +643,8 @@ int main()
             raylib::Rectangle cam_visible_area = GetCameraVisibleArea2D(cam2d);
             for(int j = 0; j < Creature::creature_size; j++) // draw zone
             {
-                
+                if(bool_draw_grid)
+                        grid.DrawGrid();
                 if(creatures[j]->stats.is_alive && CheckCollisionRecs(creatures[j]->stats.pos, cam_visible_area))
                 {
                     if(bool_draw_circle)
@@ -560,11 +675,13 @@ int main()
             {
                 moved_before = false;
                 i = 1;
+                grid.UpdateCells(creatures);
                 for(int j = 0; j < Creature::creature_size; j++)
                 {
                     if (creatures[j]->stats.is_alive)
                     {
-                        creatures[j]->checkSight(creatures); // determine if j sees any crtr
+                        creatures_in_range = grid.GridCheckSight(creatures[j]);
+                        creatures[j]->checkSight(creatures_in_range); // determine if j sees any crtr
                         if (creatures[j]->stats.go_after && creatures[j]->stats.go_after->stats.is_alive) // j has someone to go after or not?
                         {
                             // can j attack the crtr it sees?
