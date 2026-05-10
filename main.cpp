@@ -224,7 +224,7 @@ struct Grid
     raylib::Rectangle total_area;
     float side_length;
 
-    Grid(int sq_num = 10, raylib::Rectangle total_area = raylib::Rectangle(-20, -20, wander_limit.x + 20, wander_limit.y + 20))
+    Grid(int sq_num = 10, raylib::Rectangle total_area = raylib::Rectangle(-20, -20, Creature::wander_limit.x + 20, Creature::wander_limit.y + 20))
     : sq_num(sq_num), total_area(total_area), side_length(total_area.width / sq_num)
     {
         cells.resize(sq_num); 
@@ -464,6 +464,14 @@ void ParseAndAddSpecialCreature(char inputText[128], std::vector<Creature *> &cr
         {
             ss >> token;
             new_stats.range_area.radius = std::stof(token);
+        }
+
+        else if(token == "pos")
+        {
+            ss >> token;
+            new_stats.pos.x = std::stof(token);
+            ss >> token;
+            new_stats.pos.y = std::stof(token);
         }
         
     }
