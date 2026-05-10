@@ -32,27 +32,12 @@ int convertFromGameTick(int targetFPS = 60)
     int e = (gameTick / 100 * targetFPS);
     return e == 0 ? 1 : e;
 }
-int removePoint(float num) {
-    // clean string of num
-    std::ostringstream oss;
-    oss << num;
-    std::string str_num = oss.str();
 
-    // delete point
-    str_num.erase(std::remove(str_num.begin(), str_num.end(), '.'), str_num.end());
-
-    // for overflow
-    return std::stoll(str_num);
-}
-/// @brief returns random float in [min, max] with given precision
-/// @param a min
-/// @param b max
-/// @param c precision
-/// @return the random value
-float randf(float a = 0.0f, float b = 1.0f, int c = 100)
+float randf(int a = 0, int b = 100, float c = 100.0f)
 {
-    return GetRandomValue(c * removePoint(a), c * removePoint(b)) / static_cast<float>(c);
+    return GetRandomValue(a, b) / c;
 }
+
 struct Circle
 {
     float radius;
@@ -172,24 +157,24 @@ class Creature
         raylib::Vector2 center(stats.pos.x - stats.pos.width/2, stats.pos.y - stats.pos.height/2);
         raylib::Rectangle(center.x, center.y, stats.pos.width, stats.pos.height).Draw(stats.col);
     }
-    void checkSight(std::vector<Creature *> &creatures)
+    void checkSight(std::vector<Creature *> &creatures_in_range)
     {
         float min_distance_squ = INFINITY;
         float new_dist_squ;
         Creature *closest = nullptr;
-        for(size_t i = 0; i < creatures.size(); i++)
+        for(size_t i = 0; i < creatures_in_range.size(); i++)
         {
-            if(creatures[i]->stats.is_alive && !(stats.pos.x == creatures[i]->stats.pos.x && stats.pos.y == creatures[i]->stats.pos.y) && CheckCollisionCircleRec(stats.sight_area.center, stats.sight_area.radius, creatures[i]->stats.pos))
+            if(creatures_in_range[i]->stats.is_alive && !(stats.pos.x == creatures_in_range[i]->stats.pos.x && stats.pos.y == creatures_in_range[i]->stats.pos.y) && CheckCollisionCircleRec(stats.sight_area.center, stats.sight_area.radius, creatures_in_range[i]->stats.pos))
             {
-                float x = creatures[i]->stats.pos.x;
-                float y = creatures[i]->stats.pos.y;
+                float x = creatures_in_range[i]->stats.pos.x;
+                float y = creatures_in_range[i]->stats.pos.y;
                 float dx = stats.pos.x - x, dy = stats.pos.y - y;
                 float squaredx = dx * dx, squaredy = dy * dy;
                 // don't use sqrt, just compare squared distances (more efficient)
                 if((new_dist_squ = squaredx + squaredy) < min_distance_squ)
                 {
                     min_distance_squ = new_dist_squ;
-                    closest = creatures[i];
+                    closest = creatures_in_range[i];
                 }
             }
         }
@@ -347,7 +332,7 @@ void addCreature(std::vector<Creature *> &creatures, int count = 1, Stats *stats
             creatures.push_back(new Human(
                 Stats{static_cast<float>(GetRandomValue(1, 20)),
                       static_cast<float>(GetRandomValue(1, 10)),
-                      randf(0.01, 1),
+                      randf(),
                       Circle(150, rand_pos), Circle(30, rand_pos),
                       raylib::Rectangle(rand_pos.x, rand_pos.y, 5, 5), true,
                       nullptr, nullptr,
@@ -495,6 +480,20 @@ raylib::Rectangle GetCameraVisibleArea2D(Camera2D camera)
     };
 }
 
+/// @brief checks if any rectangle in an array intersects with a point or not
+/// @param gui 
+/// @param mouse_pos 
+/// @return true if point is inside of any rectangle in the array, false otherwise
+bool CheckCollisionPointRecArray(std::vector<Rectangle> &gui, Vector2 *mouse_pos)
+{
+    for(size_t i = 0; i < gui.size(); i++)
+    {
+        if(CheckCollisionPointRec(*mouse_pos, gui[i]))
+            return true;
+    }
+    return false;
+}
+
 int main()
 {
     SetRandomSeed(time(0));
@@ -531,6 +530,26 @@ int main()
 
     bool moved_before;
 
+    std::vector<Creature *> creatures_in_range;
+    // every gui element
+    std::vector<Rectangle> gui {
+        raylib::Rectangle(100, 50, 200, 30),
+        raylib::Rectangle(150, 85, 100, 30),
+        raylib::Rectangle(150, 85, 100, 30),
+        raylib::Rectangle(100, 140, 200, 30),
+        raylib::Rectangle(150, 175, 100, 30),
+        raylib::Rectangle(100, 230, 200, 30),
+        raylib::Rectangle(150, 265, 100, 30),
+        raylib::Rectangle(150, 300, 100, 30),
+        raylib::Rectangle(130, 335, 200, 30),
+        raylib::Rectangle(150, 370, 100, 30),
+        raylib::Rectangle(1200, 20, 200, 20),
+        raylib::Rectangle(50, 500, 200, 30),
+        raylib::Rectangle(50, 400, 200, 30),
+        raylib::Rectangle(50, 625, 200, 30),
+        raylib::Rectangle(50, 657, 200, 30)
+    };
+
     while (!window.ShouldClose())
     {
         /************* CAMERA ************/
@@ -559,7 +578,7 @@ int main()
         
         cam2d.zoom = expf(logf(cam2d.zoom) + (mwheel_move*0.1f));
         
-        if(IsMouseButtonDown(MOUSE_BUTTON_LEFT))
+        if(!CheckCollisionPointRecArray(gui, &mouse_pos) && IsMouseButtonDown(MOUSE_BUTTON_LEFT))
         {
             cam2d.offset.x += mouse_pos.x - old_m_pos.x;
             cam2d.offset.y += mouse_pos.y - old_m_pos.y;
@@ -632,10 +651,16 @@ int main()
 
         window.BeginDrawing();
             window.ClearBackground(raylib::Color::Black());
-            GuiSliderBar({50, 500, 200, 30}, "1", "100", &gameTick, 1.0f, 100.0f);
-            GuiSliderBar({50, 400, 200, 30}, "500", "10000", &Creature::walkLength, 500.0f, 10000.0f);
+
             DrawText(TextFormat("%f", gameTick), 50, 450, 25, GREEN);
+            GuiSliderBar({50, 500, 200, 30}, "1", "100", &gameTick, 1.0f, 100.0f);
+
             DrawText(TextFormat("getfps: %d, fps: %f", window.GetFPS(), FPS), 1200, 40, 20, YELLOW);
+            GuiSliderBar({50, 400, 200, 30}, "10", "3000", &Creature::walkLength, 10.0f, 3000.0f);
+
+            DrawText(TextFormat("Borders (x,y)"), 50, 600, 20, GREEN);
+            GuiSliderBar({50, 625, 200, 30}, "100", "20000", &Creature::wander_limit.x, 100.0f, 20000.0f);
+            GuiSliderBar({50, 657, 200, 30}, "100", "20000", &Creature::wander_limit.y, 100.0f, 20000.0f);
             
             if(debugEnabled)
                 DrawText(TextFormat("UP: %4d, DOWN: %4d, LEFT: %4d, RIGHT: %4d",
