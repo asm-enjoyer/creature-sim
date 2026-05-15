@@ -209,8 +209,8 @@ struct Grid
     raylib::Rectangle total_area;
     float side_length;
 
-    Grid(int sq_num = 10, raylib::Rectangle total_area = raylib::Rectangle(-20, -20, Creature::wander_limit.x + 20, Creature::wander_limit.y + 20))
-    : sq_num(sq_num), total_area(total_area), side_length(total_area.width / sq_num)
+    Grid(int sq_num = 12, raylib::Rectangle total_area = raylib::Rectangle(-20, -20, Creature::wander_limit.x + 20, Creature::wander_limit.y + 20))
+    : sq_num(sq_num), total_area(total_area), side_length(std::max(total_area.width, total_area.height) / sq_num)
     {
         cells.resize(sq_num); 
 
@@ -227,6 +227,15 @@ struct Grid
                 ));
             }
         }
+    }
+
+    Grid operator=(const Grid &other)
+    {
+        cells = other.cells;
+        sq_num = other.sq_num;
+        total_area = other.total_area;
+        side_length = other.side_length;
+        return *this;
     }
 
     void UpdateCells(const std::vector<Creature *> &creatures)
@@ -459,11 +468,14 @@ void ParseAndAddSpecialCreature(char inputText[128], std::vector<Creature *> &cr
             new_stats.pos.y = std::stof(token);
         }
         
+        else
+        {
+            new_stats.pos.x = GetRandomValue(2, Creature::wander_limit.x - 2);
+            new_stats.pos.y = GetRandomValue(2, Creature::wander_limit.y - 2);
+        }
     }
 
-    new_stats.pos =
-        raylib::Rectangle(GetRandomValue(2, Creature::wander_limit.x - 2),
-                          GetRandomValue(2, Creature::wander_limit.y - 2), 5, 5);
+    new_stats.pos.width = new_stats.pos.height = 5.0f;
     addCreature(creatures, 1, &new_stats);
 }
 
@@ -507,7 +519,16 @@ int main()
         std::cerr << "Sound couldn't be initialized.\n";
         return 1;
     }
-    pop_sound = raylib::Sound("my_pop_sound.mp3");
+
+    try
+    {
+        pop_sound = raylib::Sound("my_pop_sound.mp3");
+    }
+
+    catch(raylib::RaylibException &e)
+    {
+        std::cerr << "Sound file can't found, continuing program\n";
+    }
 
     raylib::Camera2D cam2d = raylib::Camera2D(Vector2{SCREEN_WIDTH / 2.0, SCREEN_HEIGHT / 2.0}, {0, 0});
 
@@ -515,6 +536,7 @@ int main()
     addCreature(creatures, 10);
 
     Grid grid;
+    raylib::Vector2 old_limit = Creature::wander_limit;
 
     int i = 0;
     bool showUI = true;
@@ -552,6 +574,11 @@ int main()
 
     while (!window.ShouldClose())
     {
+        if(old_limit != Creature::wander_limit)
+        {
+            grid = Grid();
+            old_limit = Creature::wander_limit;
+        }
         /************* CAMERA ************/
         {
         mouse_pos = GetMousePosition();
@@ -637,7 +664,7 @@ int main()
             deleteKilled(creatures);
             // creatures.shrink_to_fit();
         }
-        
+
         if(GuiButton({150, 370, 100, 30}, "Toggle grid"))
         {
             bool_draw_grid = !bool_draw_grid;
