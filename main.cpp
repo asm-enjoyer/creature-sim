@@ -408,11 +408,22 @@ void swap_pop(std::vector<Creature *> &creatures, size_t i)
 /***************** */
 void MoveByKey(std::vector<Creature *> &creatures, int j)
 {
-    float deltatime_walk = Creature::walkLength * GetFrameTime();
-    if (IsKeyDown(KEY_W)) creatures[j]->stats.pos.y -= deltatime_walk;
-    if (IsKeyDown(KEY_A)) creatures[j]->stats.pos.x -= deltatime_walk;
-    if (IsKeyDown(KEY_S)) creatures[j]->stats.pos.y += deltatime_walk;
-    if (IsKeyDown(KEY_D)) creatures[j]->stats.pos.x += deltatime_walk;
+    Vector2 inputDir = { 0.0f, 0.0f };
+
+    if (IsKeyDown(KEY_W)) inputDir.y -= 1.0f;
+    if (IsKeyDown(KEY_A)) inputDir.x -= 1.0f;
+    if (IsKeyDown(KEY_S)) inputDir.y += 1.0f;
+    if (IsKeyDown(KEY_D)) inputDir.x += 1.0f;
+
+    // prevent divide by 0
+    if (inputDir.x != 0.0f || inputDir.y != 0.0f)
+    {
+        inputDir = Vector2Normalize(inputDir);
+        float deltatime_walk = Creature::walkLength * GetFrameTime();
+        
+        creatures[j]->stats.pos.x += inputDir.x * deltatime_walk;
+        creatures[j]->stats.pos.y += inputDir.y * deltatime_walk;
+    }
 }
 
 void ParseAndAddSpecialCreature(char inputText[128], std::vector<Creature *> &creatures)
@@ -508,10 +519,10 @@ bool CheckCollisionPointRecArray(std::vector<Rectangle> &gui, Vector2 *mouse_pos
 
 int main()
 {
-    SetRandomSeed(time(0));
-
     raylib::Window window(SCREEN_WIDTH, SCREEN_HEIGHT, "Creature simulator");
     window.SetTargetFPS(FPS);
+    
+    SetRandomSeed(time(0));
 
     raylib::AudioDevice audio;
     if(!audio.IsReady())
@@ -686,8 +697,8 @@ int main()
             GuiSliderBar({50, 400, 200, 30}, "10", "3000", &Creature::walkLength, 10.0f, 3000.0f);
 
             DrawText(TextFormat("Borders (x,y)"), 50, 600, 20, GREEN);
-            GuiSliderBar({50, 625, 200, 30}, "100", "20000", &Creature::wander_limit.x, 100.0f, 20000.0f);
-            GuiSliderBar({50, 657, 200, 30}, "100", "20000", &Creature::wander_limit.y, 100.0f, 20000.0f);
+            GuiSliderBar({50, 625, 200, 30}, "100", "80000", &Creature::wander_limit.x, 100.0f, 80000.0f);
+            GuiSliderBar({50, 657, 200, 30}, "100", "80000", &Creature::wander_limit.y, 100.0f, 80000.0f);
             
             if(debugEnabled)
                 DrawText(TextFormat("UP: %4d, DOWN: %4d, LEFT: %4d, RIGHT: %4d",
