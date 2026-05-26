@@ -17,9 +17,6 @@ raylib::Sound pop_sound;
 
 enum WALK {UP, DOWN, LEFT, RIGHT};
 
-const int SCREEN_WIDTH = 2500;
-const int SCREEN_HEIGHT = 1100;
-
 float FPS = 60;
 float gameTick = 10; // 10 ms = 1 tick
 
@@ -519,17 +516,18 @@ bool CheckCollisionPointRecArray(std::vector<Rectangle> &gui, Vector2 *mouse_pos
 
 int main()
 {
+    raylib::Window temp_win(0, 0, "temp");
+    auto monitor = GetCurrentMonitor();
+    auto scr_w = GetMonitorWidth(monitor), scr_h = GetMonitorHeight(monitor);
+    temp_win.Close();
+    const int SCREEN_WIDTH = 5 * scr_w / 6.0f;
+    const int SCREEN_HEIGHT = 5 * scr_h / 6.0f;
     raylib::Window window(SCREEN_WIDTH, SCREEN_HEIGHT, "Creature simulator");
     window.SetTargetFPS(FPS);
     
     SetRandomSeed(time(0));
 
     raylib::AudioDevice audio;
-    if(!audio.IsReady())
-    {
-        std::cerr << "Sound couldn't be initialized.\n";
-        return 1;
-    }
 
     try
     {
@@ -541,7 +539,7 @@ int main()
         std::cerr << "Sound file can't found, continuing program\n";
     }
 
-    raylib::Camera2D cam2d = raylib::Camera2D(Vector2{SCREEN_WIDTH / 2.0, SCREEN_HEIGHT / 2.0}, {0, 0});
+    raylib::Camera2D cam2d = raylib::Camera2D(Vector2{SCREEN_WIDTH / 2.0f, SCREEN_HEIGHT / 2.0f}, {0, 0});
 
     std::vector<Creature*> creatures;
     addCreature(creatures, 10);
@@ -634,9 +632,7 @@ int main()
 
         if (GuiButton((Rectangle){150, 85, 100, 30}, "OK"))
         {
-
             int x = atoi(inputText[0]);
-
             addCreature(creatures, x);
         }
         /*************/
@@ -673,7 +669,6 @@ int main()
         if (GuiButton((Rectangle){130, 335, 200, 30}, "Delete 0 health crtrs"))
         {
             deleteKilled(creatures);
-            // creatures.shrink_to_fit();
         }
 
         if(GuiButton({150, 370, 100, 30}, "Toggle grid"))
